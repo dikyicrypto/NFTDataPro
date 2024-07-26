@@ -1,0 +1,74 @@
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+
+class NFTDataPro:
+    def __init__(self, base_url='https://api.opensea.io/api/v1'):
+        self.base_url = base_url
+        self.data = {}
+
+    def fetch_nft_data(self, collection_slug: str) -> str:
+        endpoint = f'{self.base_url}/assets'
+        params = {
+            'order_direction': 'desc',
+            'offset': '0',
+            'limit': '50',
+            'collection': collection_slug
+        }
+        response = requests.get(endpoint, params=params)
+        if response.status_code == 200:
+            self.data[collection_slug] = response.json()
+            return f"Data for {collection_slug} fetched successfully."
+        else:
+            return f"Failed to fetch data: {response.status_code} - {response.text}"
+
+    def get_asset_details(self, collection_slug: str) -> pd.DataFrame:
+        if collection_slug not in self.data:
+            return pd.DataFrame()
+        assets = self.data[collection_slug]['assets']
+        asset_details = []
+        for asset in assets:
+            details = {
+                'id': asset['id'],
+                'name': asset['name'],
+                'description': asset['description'],
+                'last_sale_price': asset['last_sale']['total_price'] if asset['last_sale'] else None,
+                'last_sale_date': asset['last_sale']['event_timestamp'] if asset['last_sale'] else None
+            }
+            asset_details.append(details)
+        df = pd.DataFrame(asset_details)
+        return df
+
+    def plot_asset_prices(self, collection_slug: str):
+        df = self.get_asset_details(collection_slug)
+        if df.empty or df['last_sale_price'].isna().all():
+            print("No data available to plot.")
+            return
+        df['last_sale_date'] = pd.to_datetime(df['last_sale_date'])
+        df = df.dropna(subset=['last_sale_price', 'last_sale_date'])
+        df['last_sale_price'] = df['last_sale_price'].astype(float) / 1e18  # Convert Wei to Ether
+        df = df.sort_values(by='last_sale_date')
+
+        plt.figure(figsize=(12, 6))
+        plt.plot(df['last_sale_date'], df['last_sale_price'], label='Last Sale Price')
+        plt.title(f'{collection_slug.capitalize()} Last Sale Prices Over Time')
+        plt.xlabel('Date')
+        plt.ylabel('Price (ETH)')
+        plt.legend()
+        plt.show()
+
+# Example Usage
+if __name__ == "__main__":
+    nft_data_pro = NFTDataPro()
+
+    # Fetch data for Bored Ape Yacht Club collection
+    print(nft_data_pro.fetch_nft_data('boredapeyachtclub'))
+
+    # Fetch data for CryptoPunks collection
+    print(nft_data_pro.fetch_nft_data('cryptopunks'))
+
+    # Plot last sale prices for Bored Ape Yacht Club
+    nft_data_pro.plot_asset_prices('boredapeyachtclub')
+
+    # Plot last sale prices for CryptoPunks
+    nft_data_pro.plot_asset_prices('cryptopunks')
